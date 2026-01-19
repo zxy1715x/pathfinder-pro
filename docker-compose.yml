@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  pathfinder:
+    build: .
+    container_name: pathfinder-pro
+    restart: unless-stopped
+    ports:
+      - "4237:4237" # 主面板端口
+      - "8080:8080" # 代理服务器端口
+    environment:
+      - ADMIN_PASSWORD=your_secure_password_here # 在这里修改你的密码
+      - TZ=Asia/Shanghai # 设置时区
+    volumes:
+      # 将数据持久化到本地当前目录下的 data 文件夹
+      - ./data:/app
