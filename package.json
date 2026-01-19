@@ -1,0 +1,49 @@
+{
+  "name": "pathfinder-pro-2025",
+  "version": "1.0.0",
+  "description": "基于 Mineflayer 的高级机器人框架，集成路径规划与 Express Web 控制接口，新增哪吒探针部署功能",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "mineflayer",
+    "minecraft",
+    "bot",
+    "pathfinder",
+    "express",
+    "nezha",
+    "monitoring"
+  ],
+  "author": "YourName",
+  "license": "MIT",
+  "dependencies": {
+    "adm-zip": "^0.5.10",
+    "axios": "^1.6.0",
+    "express": "^4.18.2",
+    "express-session": "^1.17.3",
+    "form-data": "^4.0.0",
+    "minecraft-data": "latest",
+    "mineflayer": "latest",
+    "mineflayer-pathfinder": "latest",
+    "multer": "^1.4.5-lts.1",
+    "node-schedule": "^2.1.1",
+    "playwright": "1.40.0",
+    "qs": "^6.11.2",
+    "tmp": "^0.2.1",
+    "unzipper": "^0.10.14",
+    "uuid": "^9.0.1",
+    "vec3": "latest",
+    "ws": "^8.14.2",
+    "yaml": "^2.3.4"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.0"
+  }
+}
