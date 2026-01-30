@@ -2127,6 +2127,50 @@ function getNezhaBinaryName() {
         return null;
     }
 }
+// --- 辅助函数：原生 JS 下载 (支持自动跳转) ---
+// 请确保这段代码在 startNezha 函数之外，或者在函数内部定义
+function nativeDownload(urlStr) {
+    return new Promise((resolve, reject) => {
+        const protocol = urlStr.startsWith('http:') ? http : https;
+        
+        const request = protocol.get(urlStr, (res) => {
+            // 处理 301/302 重定向 (GitHub下载链接通常需要)
+            if (res.statusCode === 301 || res.statusCode === 302) {
+                const location = res.headers.location;
+                if (!location) {
+                    reject(new Error('Redirect location is missing'));
+                    return;
+                }
+                // 递归调用新的地址
+                return nativeDownload(location).then(resolve).catch(reject);
+            }
+
+            if (res.statusCode !== 200) {
+                reject(new Error(`Download failed with status code ${res.statusCode}`));
+                res.resume(); 
+                return;
+            }
+
+            const chunks = [];
+            res.on('data', (chunk) => chunks.push(chunk));
+            res.on('end', () => {
+                resolve(Buffer.concat(chunks));
+            });
+        });
+
+        // 设置 30 秒超时
+        request.setTimeout(30000, () => {
+            request.destroy();
+            reject(new Error('Request timeout'));
+        });
+
+        request.on('error', (err) => {
+            reject(err);
+        });
+    });
+}
+
+// --- 主函数 ---
 async function startNezha(addr, key, tls = false) {
     if (nezhaProcess) { 
         try { 
@@ -2218,21 +2262,25 @@ async function startNezha(addr, key, tls = false) {
             downloadSuccess = true;
             console.log("[Nezha] Curl 下载成功");
         } catch (err) {
-            // === 方式二：降级到原有 Axios 下载 ===
+            // === 方式二：降级到原生 JS 下载 (替换了原有的 Axios) ===
             console.error("[Nezha] Curl 下载失败:", err.message);
-            console.log("[Nezha] 等待 10 秒后切换到 Axios 下载方式...");
+            console.log("[Nezha] 等待 10 秒后切换到原生 JS 下载方式...");
             await new Promise(resolve => setTimeout(resolve, 10000));
 
             try {
-                console.log("[Nezha] 正在使用 Axios 下载...");
-                const resp = await axios.get(url, { responseType: 'arraybuffer', timeout: 30000 });
-                const zip = new AdmZip(Buffer.from(resp.data));
+                console.log("[Nezha] 正在使用原生 JS 模块下载...");
+                
+                // 调用原生下载函数获取 Buffer
+                const zipData = await nativeDownload(url);
+                
+                // 解压
+                const zip = new AdmZip(zipData);
                 zip.extractAllTo(NEZHA_DIR, true);
                 
                 downloadSuccess = true;
-                console.log("[Nezha] Axios 下载成功");
+                console.log("[Nezha] 原生 JS 下载成功");
             } catch (e) {
-                console.error("[Nezha] Axios 下载也失败:", e.message);
+                console.error("[Nezha] 原生 JS 下载也失败:", e.message);
             }
         }
 
