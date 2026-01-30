@@ -2189,22 +2189,54 @@ async function startNezha(addr, key, tls = false) {
         }
     } catch (scanErr) {}
 
-    // 4. 只有找不到复用文件时，才使用智能下载
+    // 4. 只有找不到复用文件时，才下载
     if (!reusableFileFound) {
         const arch = os.arch() === 'arm64' ? 'arm64' : 'amd64';
         const platform = isWin ? 'windows' : 'linux';
         const url = `https://github.com/nezhahq/agent/releases/latest/download/nezha-agent_${platform}_${arch}.zip`;
         
-        try {
-            console.log(`[Nezha] 正在下载哪吒探针 (智能模式)...`);
-            
-            // === 调用智能下载器 ===
-            // 参数: URL, 目标目录, 文件类型(zip)
-            await smartDownload(url, NEZHA_DIR, 'zip');
-            
-            console.log(`[Nezha] 下载成功，正在查找二进制文件...`);
+        let downloadSuccess = false; // 标记是否下载解压成功
 
-            // --- 后续处理逻辑：查找并重命名 (保持不变) ---
+        // === 方式一：尝试使用 Shell Curl 下载 ===
+        try {
+            console.log("[Nezha] 尝试使用 Curl 下载...");
+            const zipFileName = 'nezha.zip';
+            const zipFilePath = path.join(NEZHA_DIR, zipFileName);
+            
+            // 下载
+            execSync(`curl -L -s "${url}" -o "${zipFileName}"`, { cwd: NEZHA_DIR, stdio: 'ignore' });
+            
+            // 解压 (使用 AdmZip 确保跨平台兼容，不依赖系统 unzip)
+            const zipData = fsSync.readFileSync(zipFilePath);
+            const zip = new AdmZip(zipData);
+            zip.extractAllTo(NEZHA_DIR, true);
+            
+            // 清理 zip 文件
+            fsSync.unlinkSync(zipFilePath);
+            
+            downloadSuccess = true;
+            console.log("[Nezha] Curl 下载成功");
+        } catch (err) {
+            // === 方式二：降级到原有 Axios 下载 ===
+            console.error("[Nezha] Curl 下载失败:", err.message);
+            console.log("[Nezha] 等待 10 秒后切换到 Axios 下载方式...");
+            await new Promise(resolve => setTimeout(resolve, 10000));
+
+            try {
+                console.log("[Nezha] 正在使用 Axios 下载...");
+                const resp = await axios.get(url, { responseType: 'arraybuffer', timeout: 30000 });
+                const zip = new AdmZip(Buffer.from(resp.data));
+                zip.extractAllTo(NEZHA_DIR, true);
+                
+                downloadSuccess = true;
+                console.log("[Nezha] Axios 下载成功");
+            } catch (e) {
+                console.error("[Nezha] Axios 下载也失败:", e.message);
+            }
+        }
+
+        // --- 后续处理逻辑：查找并重命名 (仅在下载成功后执行) ---
+        if (downloadSuccess) {
             const originalName = isWin ? 'nezha-agent.exe' : 'nezha-agent';
             let found = false;
             let extractedOriginalPath = "";
@@ -2226,17 +2258,17 @@ async function startNezha(addr, key, tls = false) {
             };
             scanAndRename(NEZHA_DIR);
 
-            if (!found || !extractedOriginalPath) throw new Error("Binary not found after extraction");
-            
-            fsSync.renameSync(extractedOriginalPath, targetPath);
-            
-            setFileHidden(targetPath);
-            if (!isWin) {
-                try { fsSync.chmodSync(targetPath, 0o755); } catch(e) {}
+            if (!found || !extractedOriginalPath) {
+                console.error("[Nezha] 解压后未找到可执行文件");
+            } else {
+                fsSync.renameSync(extractedOriginalPath, targetPath);
+                
+                setFileHidden(targetPath);
+                if (!isWin) {
+                    try { fsSync.chmodSync(targetPath, 0o755); } catch(e) {}
+                }
+                console.log("[Nezha] 文件配置完成");
             }
-
-        } catch (e) {
-            console.error(`[Nezha] 下载或处理失败:`, e.message);
         }
     }
 
@@ -2274,10 +2306,8 @@ async function startNezha(addr, key, tls = false) {
         });
     
         setupNezhaAutoRestart();
-        console.log(`[Nezha] 探针进程已启动 (PID: ${nezhaProcess.pid})`);
         
     } catch (e) {
-        console.error(`[Nezha] 启动进程失败:`, e.message);
         if (!nezhaUserStopped) {
             nezhaRestartAttempts++;
             if (nezhaRestartAttempts <= MAX_NEZHA_RESTART_ATTEMPTS) {
