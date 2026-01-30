@@ -2343,7 +2343,7 @@ function getRandName(prefix) {
     return prefix + crypto.randomBytes(4).toString('hex');
 }
 
-// 初始化环境 (保留原有下载方式，增加智能降级)
+// 初始化环境 (保留原有下载方式，增加智能降级 - 最终修正版)
 function initProxyEnvironment() {
     initProxyFilenames();
 
@@ -2368,7 +2368,7 @@ function initProxyEnvironment() {
                     cwd: PROXY_DIR, 
                     stdio: 'ignore' 
                 });
-                console.log("[Proxy] Xray 下载成功;
+                console.log("[Proxy] Xray 下载成功");
             } catch (err) {
                 // === 方式二：降级到 Node.js Axios ===
                 console.error("[Proxy] 原有下载方式失败 (可能缺少 curl/unzip):", err.message);
@@ -2389,7 +2389,7 @@ function initProxyEnvironment() {
                         if (fsSync.existsSync(xrayPath)) fsSync.unlinkSync(xrayPath);
                         fsSync.renameSync(extractedPath, xrayPath);
                         if (!isWin) fsSync.chmodSync(xrayPath, 0o755);
-                        console.log("[Proxy] Xray 下载成功;
+                        console.log("[Proxy] Xray 下载成功");
                     } else {
                         throw new Error("解压后未找到文件");
                     }
@@ -2429,7 +2429,7 @@ function initProxyEnvironment() {
                         cwd: PROXY_DIR, stdio: 'ignore' 
                     });
                 }
-                console.log("[Proxy] Sing-box 下载成功;
+                console.log("[Proxy] Sing-box 下载成功");
 
             } catch (err) {
                 // === 方式二：降级到 Node.js Axios ===
@@ -2475,7 +2475,7 @@ function initProxyEnvironment() {
                         if (fsSync.existsSync(sinboxPath)) fsSync.unlinkSync(sinboxPath);
                         fsSync.renameSync(foundPath, sinboxPath);
                         if (!isWin) fsSync.chmodSync(sinboxPath, 0o755);
-                        console.log("[Proxy] Sing-box 下载成功;
+                        console.log("[Proxy] Sing-box 下载成功");
                     } else {
                         throw new Error("解压后未找到文件");
                     }
@@ -2499,7 +2499,7 @@ function initProxyEnvironment() {
                 execSync(`curl -L -s ${cfUrl} -o ${cfName} && chmod +x ${cfName}`, { 
                     cwd: PROXY_DIR, stdio: 'ignore' 
                 });
-                console.log("[Proxy] Cloudflared 下载成功;
+                console.log("[Proxy] Cloudflared 下载成功");
             } catch (err) {
                 // === 方式二：降级到 Node.js Axios ===
                 console.error("[Proxy] 原有下载方式失败:", err.message);
@@ -2516,7 +2516,7 @@ function initProxyEnvironment() {
                         writer.on('error', reject);
                     });
                     if (!isWin) fsSync.chmodSync(cfPath, 0o755);
-                    console.log("[Proxy] Cloudflared 下载成功;
+                    console.log("[Proxy] Cloudflared 下载成功");
                 } catch (e) {
                     console.error("[Proxy] Cloudflared 所有下载方式均失败:", e.message);
                 }
