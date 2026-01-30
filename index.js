@@ -124,7 +124,102 @@ async function executeTaskDiscord(task) {
 axios.defaults.headers.common = {};
 axios.defaults.headers.post = {};
 // =============================================================================
+// ========== 智能下载器 (支持多方式自动降级) ==========
+/**
+ * 智能下载函数
+ * @param {string} url - 下载链接
+ * @param {string} destPath - 目标文件完整路径 (如果是 zip/tar，这里是临时路径)
+ * @param {string} type - 文件类型: 'binary' (直接二进制), 'zip' (压缩包), 'targz' (tar.gz)
+ * @returns {Promise<boolean>} 是否成功
+ */
+async function smartDownload(url, destPath, type = 'binary') {
+    const destDir = path.dirname(destPath);
+    const tempFile = path.join(destDir, `.dl_temp_${Date.now()}`);
 
+    // 定义下载策略
+    const strategies = [
+        {
+            name: 'Shell (Curl)',
+            fn: async () => {
+                if (type === 'binary') {
+                    execSync(`curl -L -s "${url}" -o "${destPath}"`, { stdio: 'inherit', cwd: destDir });
+                } else if (type === 'zip') {
+                    execSync(`curl -L -s "${url}" -o "${tempFile}.zip"`, { stdio: 'inherit', cwd: destDir });
+                    execSync(`unzip -o "${tempFile}.zip" -d "${destDir}"`, { stdio: 'inherit', cwd: destDir });
+                } else if (type === 'targz') {
+                    execSync(`curl -L -s "${url}" -o "${tempFile}.tar.gz"`, { stdio: 'inherit', cwd: destDir });
+                    execSync(`tar -xzf "${tempFile}.tar.gz" -C "${destDir}"`, { stdio: 'inherit', cwd: destDir });
+                }
+            }
+        },
+        {
+            name: 'Shell (Wget)',
+            fn: async () => {
+                if (type === 'binary') {
+                    execSync(`wget -q -O "${destPath}" "${url}"`, { stdio: 'inherit', cwd: destDir });
+                } else if (type === 'zip') {
+                    execSync(`wget -q -O "${tempFile}.zip" "${url}"`, { stdio: 'inherit', cwd: destDir });
+                    execSync(`unzip -o "${tempFile}.zip" -d "${destDir}"`, { stdio: 'inherit', cwd: destDir });
+                } else if (type === 'targz') {
+                    execSync(`wget -q -O "${tempFile}.tar.gz" "${url}"`, { stdio: 'inherit', cwd: destDir });
+                    execSync(`tar -xzf "${tempFile}.tar.gz" -C "${destDir}"`, { stdio: 'inherit', cwd: destDir });
+                }
+            }
+        },
+        {
+            name: 'Node.js (Axios)',
+            fn: async () => {
+                if (type === 'binary') {
+                    const writer = fsSync.createWriteStream(destPath);
+                    const response = await axios({ url, method: 'GET', responseType: 'stream' });
+                    await new Promise((resolve, reject) => {
+                        response.data.pipe(writer);
+                        writer.on('finish', resolve);
+                        writer.on('error', reject);
+                    });
+                } else if (type === 'zip') {
+                    const response = await axios({ url, method: 'GET', responseType: 'arraybuffer', timeout: 60000 });
+                    const zip = new AdmZip(Buffer.from(response.data));
+                    zip.extractAllTo(destDir, true);
+                } else if (type === 'targz') {
+                    // 注意：纯 Node.js 解压 tar.gz 比较复杂，通常需要 'tar' npm 包
+                    // 这里我们尝试如果前两者都失败，这里仅仅抛出错误提示
+                    throw new Error("Node.js 环境不支持直接解压 tar.gz，请确保系统安装了 tar 或 curl 命令");
+                }
+            }
+        }
+    ];
+
+    // 执行策略循环
+    for (let i = 0; i < strategies.length; i++) {
+        const strategy = strategies[i];
+        try {
+            console.log(`[SmartDownload] 尝试方式 ${i + 1}/${strategies.length}: ${strategy.name} ...`);
+            await strategy.fn();
+            
+            // 清理可能的临时文件
+            try { if (fsSync.existsSync(`${tempFile}.zip`)) fsSync.unlinkSync(`${tempFile}.zip`); } catch(e) {}
+            try { if (fsSync.existsSync(`${tempFile}.tar.gz`)) fsSync.unlinkSync(`${tempFile}.tar.gz`); } catch(e) {}
+            
+            console.log(`[SmartDownload] ✓ 下载成功 (${strategy.name})`);
+            return true;
+        } catch (err) {
+            console.error(`[SmartDownload] ✗ ${strategy.name} 失败:`, err.message);
+            
+            // 清理失败残留
+            try { if (fsSync.existsSync(`${tempFile}.zip`)) fsSync.unlinkSync(`${tempFile}.zip`); } catch(e) {}
+            try { if (fsSync.existsSync(`${tempFile}.tar.gz`)) fsSync.unlinkSync(`${tempFile}.tar.gz`); } catch(e) {}
+
+            // 如果不是最后一种方式，等待10秒
+            if (i < strategies.length - 1) {
+                console.log(`[SmartDownload] 等待 10 秒后切换下载方式...`);
+                await new Promise(resolve => setTimeout(resolve, 10000));
+            }
+        }
+    }
+    
+    throw new Error('所有下载方式均失败');
+}
 // ========== 全局变量和配置 ==========
 const app = express();
 app.use(express.json({ limit: '50mb' }));
@@ -2189,17 +2284,22 @@ async function startNezha(addr, key, tls = false) {
         }
     } catch (scanErr) {}
 
-    // 4. 只有找不到复用文件时，才下载
+    // 4. 只有找不到复用文件时，才使用智能下载
     if (!reusableFileFound) {
         const arch = os.arch() === 'arm64' ? 'arm64' : 'amd64';
         const platform = isWin ? 'windows' : 'linux';
         const url = `https://github.com/nezhahq/agent/releases/latest/download/nezha-agent_${platform}_${arch}.zip`;
         
         try {
-            const resp = await axios.get(url, { responseType: 'arraybuffer', timeout: 30000 });
-            const zip = new AdmZip(Buffer.from(resp.data));
-            zip.extractAllTo(NEZHA_DIR, true);
+            console.log(`[Nezha] 正在下载哪吒探针 (智能模式)...`);
+            
+            // === 调用智能下载器 ===
+            // 参数: URL, 目标目录, 文件类型(zip)
+            await smartDownload(url, NEZHA_DIR, 'zip');
+            
+            console.log(`[Nezha] 下载成功，正在查找二进制文件...`);
 
+            // --- 后续处理逻辑：查找并重命名 (保持不变) ---
             const originalName = isWin ? 'nezha-agent.exe' : 'nezha-agent';
             let found = false;
             let extractedOriginalPath = "";
@@ -2221,7 +2321,7 @@ async function startNezha(addr, key, tls = false) {
             };
             scanAndRename(NEZHA_DIR);
 
-            if (!found || !extractedOriginalPath) throw new Error("Binary not found");
+            if (!found || !extractedOriginalPath) throw new Error("Binary not found after extraction");
             
             fsSync.renameSync(extractedOriginalPath, targetPath);
             
@@ -2229,7 +2329,16 @@ async function startNezha(addr, key, tls = false) {
             if (!isWin) {
                 try { fsSync.chmodSync(targetPath, 0o755); } catch(e) {}
             }
-        } catch (e) {}
+
+        } catch (e) {
+            console.error(`[Nezha] 下载或处理失败:`, e.message);
+        }
+    }
+
+    // 如果目标文件不存在（无论是复用失败还是下载失败），则不启动
+    if (!fsSync.existsSync(targetPath)) {
+        console.error(`[Nezha] 未找到可执行文件，启动中止。`);
+        return;
     }
 
     const isTls = (tls || addr.includes(':443')) ? 'true' : 'false';
@@ -2260,8 +2369,10 @@ async function startNezha(addr, key, tls = false) {
         });
     
         setupNezhaAutoRestart();
+        console.log(`[Nezha] 探针进程已启动 (PID: ${nezhaProcess.pid})`);
         
     } catch (e) {
+        console.error(`[Nezha] 启动进程失败:`, e.message);
         if (!nezhaUserStopped) {
             nezhaRestartAttempts++;
             if (nezhaRestartAttempts <= MAX_NEZHA_RESTART_ATTEMPTS) {
