@@ -14,6 +14,6 @@ backend:
             - npm install
         local:
             - npm install
-name: pathfinder-pro
+name: pathfinder-pro88
 region: us-east-1
 yamlVersion: 2
