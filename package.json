@@ -1,12 +1,13 @@
 {
   "name": "pathfinder-pro-2025",
   "version": "1.0.0",
-  "description": "基于 Mineflayer 的高级机器人框架，集成路径规划与 Express Web 控制接口，新增哪吒探针部署功能",
+  "description": "Advanced Mineflayer-based bot framework with pathfinding, Express web interface",
   "main": "index.js",
   "type": "commonjs",
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
+    "install-v": "npm install",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "engines": {
@@ -33,14 +34,9 @@
     "mineflayer": "latest",
     "mineflayer-pathfinder": "latest",
     "multer": "^1.4.5-lts.1",
-    "node-schedule": "^2.1.1",
     "qs": "^6.11.2",
-    "tmp": "^0.2.1",
-    "unzipper": "^0.10.14",
-    "uuid": "^9.0.1",
     "vec3": "latest",
-    "ws": "^8.14.2",
-    "yaml": "^2.3.4"
+    "ws": "^8.14.2"
   },
   "devDependencies": {
     "nodemon": "^3.0.0"
